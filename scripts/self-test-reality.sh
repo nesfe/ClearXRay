@@ -5,7 +5,7 @@ ENV_FILE="${1:-/root/clearxray.env}"
 TEST_URL="${2:-https://www.cloudflare.com}"
 
 if [[ ! -f "$ENV_FILE" ]]; then
-  echo "Файл не найден: $ENV_FILE"
+  echo "Файл параметров не найден: $ENV_FILE"
   exit 1
 fi
 
@@ -20,6 +20,11 @@ cleanup() {
   pkill -f "$TMP_CONFIG" 2>/dev/null || true
 }
 trap cleanup EXIT
+
+echo "Запуск локальной проверки конфигурации REALITY"
+echo "Сервер: ${SERVER_IP}:443"
+echo "Хост маскировки: ${TARGET_HOST}"
+echo "Тестовый URL: ${TEST_URL}"
 
 cat > "$TMP_CONFIG" <<EOF
 {
@@ -65,14 +70,15 @@ cat > "$TMP_CONFIG" <<EOF
 EOF
 
 /usr/local/bin/xray run -test -config "$TMP_CONFIG"
+echo "Временная клиентская конфигурация валидна"
 nohup /usr/local/bin/xray run -config "$TMP_CONFIG" >"$TMP_LOG" 2>&1 &
 PID=$!
 sleep 2
 
 if curl --socks5-hostname 127.0.0.1:10808 -I --max-time 12 "$TEST_URL"; then
-  echo "Self-test прошёл успешно"
+  echo "Локальная проверка завершилась успешно"
 else
-  echo "Self-test завершился ошибкой"
+  echo "Локальная проверка завершилась ошибкой"
   echo "--- лог временного xray-клиента ---"
   tail -n 80 "$TMP_LOG" || true
   exit 1

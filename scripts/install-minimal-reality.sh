@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if [[ "$(id -u)" -ne 0 ]]; then
-  echo "Запусти от root"
+  echo "Установщик необходимо запускать от имени root."
   exit 1
 fi
 
@@ -10,20 +10,30 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
+BLUE='\033[0;34m'
 NC='\033[0m'
 
-step() { printf "\n${CYAN}=== %s ===${NC}\n\n" "$1"; }
+title() { printf "\n${BLUE}ClearXRay${NC}\n"; }
+step() { printf "\n${CYAN}== %s ==${NC}\n\n" "$1"; }
 ok() { printf "${GREEN}[OK] %s${NC}\n" "$1"; }
 warn() { printf "${YELLOW}[!] %s${NC}\n" "$1"; }
 err() { printf "${RED}[ОШИБКА] %s${NC}\n" "$1"; }
+info() { printf "    %s\n" "$1"; }
+
+title
+printf "Установщик минимальной конфигурации Xray REALITY\n"
+printf "Режим установки: полная пересборка VPN-стека на сервере\n"
 
 TARGET_HOST_DEFAULT="www.mix.com"
 read -r -p "Хост для маскировки [${TARGET_HOST_DEFAULT}]: " TARGET_HOST
 TARGET_HOST="${TARGET_HOST:-$TARGET_HOST_DEFAULT}"
 
+warn "Будут удалены остатки Xray, Amnezia, Outline, Docker и очищены правила iptables."
+warn "Порт 443/tcp будет освобождён и заново назначен для Xray REALITY."
+
 step "Полная очистка сервера"
 if command -v docker >/dev/null 2>&1; then
-  warn "Найден Docker, удаляю контейнеры и пакеты"
+  warn "Обнаружен Docker. Выполняется удаление контейнеров, сетей и пакетов."
   docker stop $(docker ps -aq) 2>/dev/null || true
   docker rm $(docker ps -aq) 2>/dev/null || true
   docker network prune -f 2>/dev/null || true
@@ -42,6 +52,7 @@ ok "Остатки Amnezia и Outline удалены"
 
 systemctl stop xray 2>/dev/null || true
 systemctl disable xray 2>/dev/null || true
+ok "Предыдущий сервис Xray остановлен"
 
 iptables -F 2>/dev/null || true
 iptables -X 2>/dev/null || true
@@ -70,6 +81,7 @@ fi
 step "Установка зависимостей"
 apt-get update -qq
 apt-get install -y -qq curl openssl ufw ca-certificates
+ok "Системные зависимости установлены"
 
 step "Установка Xray"
 bash -c "$(curl -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
@@ -92,7 +104,7 @@ fi
 
 ok "IP: $SERVER_IP"
 ok "UUID: $UUID"
-ok "Password/PublicKey: $PASSWORD"
+ok "PublicKey: $PASSWORD"
 ok "Short ID: $SHORT_ID"
 
 step "Запись конфига"
@@ -207,11 +219,16 @@ EOF
 ok "Сохранён /root/clearxray.env"
 ok "Сохранён /root/clearxray-link.txt"
 
-printf "\n${GREEN}Клиентская ссылка:${NC}\n\n"
-cat /root/clearxray-link.txt
-printf "\n"
+step "Результат установки"
+info "Сервис: Xray REALITY"
+info "Порт: 443/tcp"
+info "Хост маскировки: ${TARGET_HOST}"
+info "Файл окружения: /root/clearxray.env"
+info "Файл клиентской ссылки: /root/clearxray-link.txt"
 
-printf "${CYAN}Полезные команды:${NC}\n"
+printf "\n${GREEN}Готовая клиентская ссылка${NC}\n\n"
+cat /root/clearxray-link.txt
+printf "\n\n${CYAN}Полезные команды${NC}\n"
 printf "  systemctl status xray\n"
 printf "  journalctl -u xray -n 50 --no-pager\n"
 printf "  ss -ltnp | grep 443\n"
