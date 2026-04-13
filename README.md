@@ -1,36 +1,54 @@
 # ClearXRay
 
-Минимальный, воспроизводимый деплой `Xray REALITY`, который соответствует рабочему состоянию сервера после ремонта.
+Минимальный и воспроизводимый `Xray REALITY`, который был получен после лабораторного разбора нерабочей конфигурации.
 
-Цель этого репозитория:
+## Главный Лабораторный Вывод
 
-- зафиксировать, что именно ломалось;
-- отделить доказанные факты от гипотез;
-- сохранить минимальную рабочую конфигурацию;
-- дать автодеплой без лишних опций, которые мешают диагностике.
+> **Проблему ломал `flow=xtls-rprx-vision`.**
+>
+> Это подтверждено A/B-тестом:
+>
+> - `443`: рабочий baseline без `flow` -> работает
+> - `9443`: тот же самый конфиг, тот же самый сервер, тот же самый `UUID`, тот же самый `pbk`, тот же самый `shortId`, тот же самый `SNI`, но добавлен только `flow=xtls-rprx-vision` -> таймаут
 
-## Что находится в репозитории
+Это не общая теория "про весь интернет". Это практический вывод по конкретному серверу, конкретному клиенту и конкретной рабочей конфигурации.
 
-- `docs/ROOT_CAUSE.md`
-  Подробный технический разбор: что было доказано, что осталось гипотезой, чем отличался нерабочий конфиг от рабочего.
-- `docs/HANDSHAKE_EXPLAINED.md`
-  Техническое объяснение `REALITY`-handshake без упрощений и без "детских" аналогий.
-- `scripts/install-minimal-reality.sh`
-  Автоматическая установка минимального рабочего `Xray REALITY` на Ubuntu.
-- `scripts/generate-client-link.sh`
-  Генерация клиентской `vless://`-ссылки из сохранённых параметров.
-- `scripts/self-test-reality.sh`
-  Локальный self-test через временный SOCKS-inbound.
+## Что делает этот репозиторий
 
-## Рабочий профиль
+- фиксирует техническую причину поломки;
+- сохраняет минимальный рабочий baseline;
+- даёт один установочный скрипт в стиле `V2RayTun`;
+- очищает сервер перед установкой;
+- ставит `Xray REALITY` без `Vision`;
+- выдаёт готовую `vless://`-ссылку для вставки в клиент.
 
-Именно такой формат профиля в итоге заработал:
+## Установка одной командой
 
-```text
-vless://UUID@SERVER_IP:443?encryption=none&type=tcp&security=reality&sni=www.mix.com&fp=chrome&pbk=PASSWORD&sid=SHORTID#minimal-www-mix
+На чистом или грязном Ubuntu VPS:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/nesfe/ClearXRay/main/install.sh)
 ```
 
-Критичные свойства рабочего варианта:
+Скрипт:
+
+- чистит старый мусор;
+- удаляет Docker / Amnezia / Outline;
+- ставит `Xray`;
+- генерирует новый `UUID`, keypair и `shortId`;
+- пишет минимальный рабочий `REALITY`-конфиг;
+- проверяет конфиг;
+- настраивает `ufw`;
+- запускает сервис;
+- выдаёт готовую клиентскую ссылку.
+
+## Рабочий Формат Профиля
+
+```text
+vless://UUID@SERVER_IP:443?encryption=none&type=tcp&security=reality&sni=www.mix.com&fp=chrome&pbk=PASSWORD&sid=SHORTID#clearxray-www.mix.com
+```
+
+Критичные свойства:
 
 - `type=tcp`
 - без `flow=xtls-rprx-vision`
@@ -39,21 +57,20 @@ vless://UUID@SERVER_IP:443?encryption=none&type=tcp&security=reality&sni=www.mix
 - один `serverName`
 - один и тот же hostname в `target` и `serverNames`
 
-## Деплой
+## Структура Репозитория
 
-На чистом Ubuntu VPS:
-
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/nesfe/ClearXRay/main/scripts/install-minimal-reality.sh)
-```
-
-Если репозиторий пока только локальный:
-
-```bash
-scp -r ClearXRay root@ВАШ_СЕРВЕР:/root/
-ssh root@ВАШ_СЕРВЕР
-bash /root/ClearXRay/scripts/install-minimal-reality.sh
-```
+- `install.sh`
+  Один полный установщик для запуска через `curl | bash`
+- `docs/ROOT_CAUSE.md`
+  Подробный техразбор причины поломки
+- `docs/HANDSHAKE_EXPLAINED.md`
+  Техническое объяснение `REALITY`-handshake без упрощений
+- `scripts/install-minimal-reality.sh`
+  Локальная версия установщика
+- `scripts/generate-client-link.sh`
+  Генерация клиентской ссылки
+- `scripts/self-test-reality.sh`
+  Локальный self-test через временный SOCKS inbound
 
 ## Какие файлы создаются на сервере
 
@@ -63,16 +80,21 @@ bash /root/ClearXRay/scripts/install-minimal-reality.sh
 - `/root/clearxray-link.txt`
 - `/usr/local/etc/xray/config.json`
 
-## Почему конфиг здесь минимальный
+## Что зафиксировано как baseline
 
-Смысл не в "максимуме возможностей", а в минимуме переменных.
+Рабочий baseline:
 
-Если `REALITY` перестаёт работать, в первую очередь мешают:
+- `VLESS + REALITY`
+- `network=raw`
+- без `Vision`
+- `www.mix.com`
+- новый `UUID`
+- новый keypair
+- новый `shortId`
 
-- несколько inbound'ов во время отладки;
-- `flow=xtls-rprx-vision`;
-- повторное использование старых credential-наборов;
-- одновременная смена SNI, портов, ключей и клиентов.
+Нерабочая ветка:
 
-Поэтому в этом репозитории зафиксирован не "универсальный монстр-конфиг", а рабочий baseline.
+- `VLESS + REALITY + flow=xtls-rprx-vision`
+
+Если задача — получить рабочий VPN, а не экспериментировать с несовместимостью, брать нужно именно baseline без `Vision`.
 

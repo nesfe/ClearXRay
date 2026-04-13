@@ -21,6 +21,43 @@ TARGET_HOST_DEFAULT="www.mix.com"
 read -r -p "Хост для маскировки [${TARGET_HOST_DEFAULT}]: " TARGET_HOST
 TARGET_HOST="${TARGET_HOST:-$TARGET_HOST_DEFAULT}"
 
+step "Полная очистка сервера"
+if command -v docker >/dev/null 2>&1; then
+  warn "Найден Docker, удаляю контейнеры и пакеты"
+  docker stop $(docker ps -aq) 2>/dev/null || true
+  docker rm $(docker ps -aq) 2>/dev/null || true
+  docker network prune -f 2>/dev/null || true
+  systemctl stop docker.socket docker.service 2>/dev/null || true
+  apt-get purge -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin 2>/dev/null || true
+  apt-get purge -y docker docker.io containerd runc 2>/dev/null || true
+  rm -rf /var/lib/docker /var/lib/containerd /etc/docker
+  ok "Docker удалён"
+else
+  ok "Docker не найден"
+fi
+
+rm -rf /opt/amnezia /etc/amnezia 2>/dev/null || true
+rm -rf /opt/outline /etc/outline 2>/dev/null || true
+ok "Остатки Amnezia и Outline удалены"
+
+systemctl stop xray 2>/dev/null || true
+systemctl disable xray 2>/dev/null || true
+
+iptables -F 2>/dev/null || true
+iptables -X 2>/dev/null || true
+iptables -t nat -F 2>/dev/null || true
+iptables -t nat -X 2>/dev/null || true
+iptables -t mangle -F 2>/dev/null || true
+iptables -t mangle -X 2>/dev/null || true
+iptables -P INPUT ACCEPT 2>/dev/null || true
+iptables -P FORWARD ACCEPT 2>/dev/null || true
+iptables -P OUTPUT ACCEPT 2>/dev/null || true
+ok "iptables очищены"
+
+fuser -k 443/tcp 2>/dev/null || true
+rm -f /root/clearxray.env /root/clearxray-link.txt 2>/dev/null || true
+ok "Старые артефакты очищены"
+
 step "Проверка TLS-хоста"
 if echo | openssl s_client -connect "${TARGET_HOST}:443" -servername "${TARGET_HOST}" -verify_hostname "${TARGET_HOST}" >/tmp/clearxray-target.log 2>&1; then
   ok "Сертификат ${TARGET_HOST} успешно проверен"
@@ -146,6 +183,13 @@ sleep 1
 systemctl is-active --quiet xray
 ok "Xray запущен"
 
+if ss -ltnp | grep -q ':443'; then
+  ok "Порт 443 слушает"
+else
+  err "Порт 443 не слушает"
+  exit 1
+fi
+
 step "Сохранение параметров"
 cat > /root/clearxray.env <<EOF
 SERVER_IP=${SERVER_IP}
@@ -160,9 +204,15 @@ cat > /root/clearxray-link.txt <<EOF
 vless://${UUID}@${SERVER_IP}:443?encryption=none&type=tcp&security=reality&sni=${TARGET_HOST}&fp=chrome&pbk=${PASSWORD}&sid=${SHORT_ID}#clearxray-${TARGET_HOST}
 EOF
 
-ok "Saved /root/clearxray.env"
+ok "Сохранён /root/clearxray.env"
 ok "Сохранён /root/clearxray-link.txt"
 
 printf "\n${GREEN}Клиентская ссылка:${NC}\n\n"
 cat /root/clearxray-link.txt
 printf "\n"
+
+printf "${CYAN}Полезные команды:${NC}\n"
+printf "  systemctl status xray\n"
+printf "  journalctl -u xray -n 50 --no-pager\n"
+printf "  ss -ltnp | grep 443\n"
+printf "  cat /root/clearxray-link.txt\n"
