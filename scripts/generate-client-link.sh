@@ -26,3 +26,22 @@ if command -v qrencode >/dev/null 2>&1; then
 else
   echo "qrencode не установлен. Установите пакет: apt-get install -y qrencode"
 fi
+
+if [[ "${VISION_ENABLED:-0}" == "1" ]]; then
+  VISION_LINK="vless://${VISION_UUID}@${SERVER_IP}:${VISION_PORT}?encryption=none&type=tcp&security=reality&sni=${TARGET_HOST}&fp=chrome&pbk=${VISION_PASSWORD}&sid=${VISION_SHORT_ID}&flow=xtls-rprx-vision#clearxray-vision-${TARGET_HOST}-${VISION_PORT}"
+
+  echo
+  echo "Экспериментальная клиентская ссылка Vision:"
+  echo
+  printf '%s\n' "$VISION_LINK"
+
+  echo
+  echo "QR-код Vision:"
+  echo
+
+  if command -v qrencode >/dev/null 2>&1; then
+    printf '%s' "$VISION_LINK" | qrencode -t ANSIUTF8
+  else
+    echo "qrencode не установлен. Установите пакет: apt-get install -y qrencode"
+  fi
+fi

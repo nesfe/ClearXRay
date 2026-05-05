@@ -45,7 +45,12 @@ run iptables -S
 run iptables -t nat -S
 
 section "ClearXRay files"
-run ls -la /usr/local/etc/xray /root/clearxray.env /root/clearxray-link.txt
+run ls -la /usr/local/etc/xray \
+  /root/clearxray.env \
+  /root/clearxray-link.txt \
+  /root/clearxray-qr.png \
+  /root/clearxray-vision-link.txt \
+  /root/clearxray-vision-qr.png
 
 if [[ -f /usr/local/etc/xray/config.json ]]; then
   run /usr/local/bin/xray run -test -config /usr/local/etc/xray/config.json
@@ -63,11 +68,22 @@ if [[ -f "$ENV_FILE" ]]; then
   printf 'UUID=%s\n' "${UUID:-}"
   printf 'PASSWORD/PublicKey=%s\n' "${PASSWORD:-}"
   printf 'SHORT_ID=%s\n' "${SHORT_ID:-}"
+  printf 'VISION_ENABLED=%s\n' "${VISION_ENABLED:-0}"
+  printf 'VISION_PORT=%s\n' "${VISION_PORT:-}"
+  printf 'VISION_UUID=%s\n' "${VISION_UUID:-}"
+  printf 'VISION_PASSWORD/PublicKey=%s\n' "${VISION_PASSWORD:-}"
+  printf 'VISION_SHORT_ID=%s\n' "${VISION_SHORT_ID:-}"
 
   if [[ -f /root/clearxray-link.txt ]]; then
     echo
     echo "--- /root/clearxray-link.txt ---"
     cat /root/clearxray-link.txt
+  fi
+
+  if [[ -f /root/clearxray-vision-link.txt ]]; then
+    echo
+    echo "--- /root/clearxray-vision-link.txt ---"
+    cat /root/clearxray-vision-link.txt
   fi
 
   section "External target check"

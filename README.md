@@ -80,6 +80,8 @@ vless://UUID@SERVER_IP:443?encryption=none&type=tcp&security=reality&sni=www.mix
 - `sni` совпадает с серверным `serverNames`;
 - параметр `flow` отсутствует.
 
+Дополнительно установщик может развернуть экспериментальный профиль `VLESS + REALITY + flow=xtls-rprx-vision` на отдельном порту. Этот профиль создаётся отдельным inbound, отдельным `UUID`, отдельной парой ключей и отдельным `shortId`, чтобы его можно было тестировать независимо от базовой рабочей конфигурации на `443/tcp`.
+
 ## Установка одной командой
 
 ```bash
@@ -100,7 +102,8 @@ bash <(curl -fsSL https://raw.githubusercontent.com/nesfe/ClearXRay/main/install
 6. проверяет конфигурацию через встроенный тест `xray`;
 7. настраивает `ufw` с открытыми портами `22/tcp` и `443/tcp`;
 8. запускает сервис и проверяет наличие слушающего сокета;
-9. формирует готовую `vless://` ссылку и QR-код для импорта в клиент.
+9. формирует готовую `vless://` ссылку и QR-код для импорта в клиент;
+10. при выборе Vision-опции формирует отдельную ссылку и QR-код с `flow=xtls-rprx-vision` на выбранном порту.
 
 После установки на сервере создаются:
 
@@ -108,6 +111,11 @@ bash <(curl -fsSL https://raw.githubusercontent.com/nesfe/ClearXRay/main/install
 - `/root/clearxray.env`
 - `/root/clearxray-link.txt`
 - `/root/clearxray-qr.png`
+
+Если включён экспериментальный Vision-профиль, дополнительно создаются:
+
+- `/root/clearxray-vision-link.txt`
+- `/root/clearxray-vision-qr.png`
 
 ## Параметры клиентского профиля
 

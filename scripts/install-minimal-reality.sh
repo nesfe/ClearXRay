@@ -28,6 +28,27 @@ TARGET_HOST_DEFAULT="www.mix.com"
 read -r -p "Хост для маскировки [${TARGET_HOST_DEFAULT}]: " TARGET_HOST
 TARGET_HOST="${TARGET_HOST:-$TARGET_HOST_DEFAULT}"
 
+VISION_ENABLED=0
+VISION_PORT=""
+read -r -p "Дополнительно развернуть профиль Vision с flow=xtls-rprx-vision на отдельном порту? [y/N]: " ENABLE_VISION
+case "${ENABLE_VISION,,}" in
+  y|yes|д|да)
+    VISION_ENABLED=1
+    VISION_PORT_DEFAULT="8443"
+    read -r -p "Порт для Vision-профиля [${VISION_PORT_DEFAULT}]: " VISION_PORT
+    VISION_PORT="${VISION_PORT:-$VISION_PORT_DEFAULT}"
+    if ! [[ "$VISION_PORT" =~ ^[0-9]+$ ]] || (( VISION_PORT < 1 || VISION_PORT > 65535 )); then
+      err "Некорректный порт для Vision-профиля: ${VISION_PORT}"
+      exit 1
+    fi
+    if [[ "$VISION_PORT" == "22" || "$VISION_PORT" == "443" ]]; then
+      err "Vision-профиль должен использовать отдельный порт, не 22 и не 443."
+      exit 1
+    fi
+    warn "Vision-профиль с flow=xtls-rprx-vision будет открыт на ${VISION_PORT}/tcp."
+    ;;
+esac
+
 warn "Будут удалены остатки Xray, Amnezia, Outline, Docker и очищены правила iptables."
 warn "Порт 443/tcp будет освобождён и заново назначен для Xray REALITY."
 
@@ -66,7 +87,14 @@ iptables -P OUTPUT ACCEPT 2>/dev/null || true
 ok "iptables очищены"
 
 fuser -k 443/tcp 2>/dev/null || true
-rm -f /root/clearxray.env /root/clearxray-link.txt /root/clearxray-qr.png 2>/dev/null || true
+if [[ "$VISION_ENABLED" == "1" ]]; then
+  fuser -k "${VISION_PORT}/tcp" 2>/dev/null || true
+fi
+rm -f /root/clearxray.env \
+  /root/clearxray-link.txt \
+  /root/clearxray-qr.png \
+  /root/clearxray-vision-link.txt \
+  /root/clearxray-vision-qr.png 2>/dev/null || true
 ok "Старые артефакты очищены"
 
 step "Проверка TLS-хоста"
@@ -95,6 +123,18 @@ KEYS="$("/usr/local/bin/xray" x25519 2>&1)"
 PRIVATE_KEY="$(awk -F': ' '/PrivateKey/ {print $2}' <<<"$KEYS")"
 PASSWORD="$(awk -F': ' '/Password \(PublicKey\)/ {print $2}' <<<"$KEYS")"
 SHORT_ID="$(openssl rand -hex 8)"
+VISION_UUID=""
+VISION_PRIVATE_KEY=""
+VISION_PASSWORD=""
+VISION_SHORT_ID=""
+
+if [[ "$VISION_ENABLED" == "1" ]]; then
+  VISION_UUID="$("/usr/local/bin/xray" uuid)"
+  VISION_KEYS="$("/usr/local/bin/xray" x25519 2>&1)"
+  VISION_PRIVATE_KEY="$(awk -F': ' '/PrivateKey/ {print $2}' <<<"$VISION_KEYS")"
+  VISION_PASSWORD="$(awk -F': ' '/Password \(PublicKey\)/ {print $2}' <<<"$VISION_KEYS")"
+  VISION_SHORT_ID="$(openssl rand -hex 8)"
+fi
 
 if [[ -z "$SERVER_IP" || -z "$UUID" || -z "$PRIVATE_KEY" || -z "$PASSWORD" || -z "$SHORT_ID" ]]; then
   err "Не удалось сгенерировать один или несколько обязательных параметров"
@@ -102,10 +142,63 @@ if [[ -z "$SERVER_IP" || -z "$UUID" || -z "$PRIVATE_KEY" || -z "$PASSWORD" || -z
   exit 1
 fi
 
+if [[ "$VISION_ENABLED" == "1" ]] && [[ -z "$VISION_UUID" || -z "$VISION_PRIVATE_KEY" || -z "$VISION_PASSWORD" || -z "$VISION_SHORT_ID" ]]; then
+  err "Не удалось сгенерировать один или несколько параметров Vision-профиля"
+  printf '%s\n' "$VISION_KEYS"
+  exit 1
+fi
+
 ok "IP: $SERVER_IP"
 ok "UUID: $UUID"
 ok "PublicKey: $PASSWORD"
 ok "Short ID: $SHORT_ID"
+
+VISION_INBOUND_JSON=""
+if [[ "$VISION_ENABLED" == "1" ]]; then
+  ok "Vision port: ${VISION_PORT}"
+  ok "Vision UUID: ${VISION_UUID}"
+  ok "Vision PublicKey: ${VISION_PASSWORD}"
+  ok "Vision Short ID: ${VISION_SHORT_ID}"
+  VISION_INBOUND_JSON=$(cat <<EOF
+,
+    {
+      "listen": "0.0.0.0",
+      "port": ${VISION_PORT},
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "id": "${VISION_UUID}",
+            "flow": "xtls-rprx-vision",
+            "email": "vision"
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "raw",
+        "security": "reality",
+        "realitySettings": {
+          "show": false,
+          "target": "${TARGET_HOST}:443",
+          "xver": 0,
+          "serverNames": [
+            "${TARGET_HOST}"
+          ],
+          "privateKey": "${VISION_PRIVATE_KEY}",
+          "shortIds": [
+            "${VISION_SHORT_ID}"
+          ]
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": ["http", "tls", "quic"]
+      }
+    }
+EOF
+)
+fi
 
 step "Запись конфига"
 cat > /usr/local/etc/xray/config.json <<EOF
@@ -148,6 +241,7 @@ cat > /usr/local/etc/xray/config.json <<EOF
         "destOverride": ["http", "tls", "quic"]
       }
     }
+${VISION_INBOUND_JSON}
   ],
   "outbounds": [
     {
@@ -185,6 +279,9 @@ ufw default deny incoming
 ufw default allow outgoing
 ufw allow 22/tcp comment 'SSH'
 ufw allow 443/tcp comment 'Xray Reality'
+if [[ "$VISION_ENABLED" == "1" ]]; then
+  ufw allow "${VISION_PORT}/tcp" comment 'Xray Reality Vision'
+fi
 ufw --force enable
 ok "UFW настроен"
 
@@ -202,8 +299,21 @@ else
   exit 1
 fi
 
+if [[ "$VISION_ENABLED" == "1" ]]; then
+  if ss -ltnp | grep -q ":${VISION_PORT}"; then
+    ok "Порт ${VISION_PORT} слушает"
+  else
+    err "Порт ${VISION_PORT} не слушает"
+    exit 1
+  fi
+fi
+
 step "Сохранение параметров"
 CLIENT_LINK="vless://${UUID}@${SERVER_IP}:443?encryption=none&type=tcp&security=reality&sni=${TARGET_HOST}&fp=chrome&pbk=${PASSWORD}&sid=${SHORT_ID}#clearxray-${TARGET_HOST}"
+VISION_CLIENT_LINK=""
+if [[ "$VISION_ENABLED" == "1" ]]; then
+  VISION_CLIENT_LINK="vless://${VISION_UUID}@${SERVER_IP}:${VISION_PORT}?encryption=none&type=tcp&security=reality&sni=${TARGET_HOST}&fp=chrome&pbk=${VISION_PASSWORD}&sid=${VISION_SHORT_ID}&flow=xtls-rprx-vision#clearxray-vision-${TARGET_HOST}-${VISION_PORT}"
+fi
 
 cat > /root/clearxray.env <<EOF
 SERVER_IP=${SERVER_IP}
@@ -212,15 +322,30 @@ UUID=${UUID}
 PASSWORD=${PASSWORD}
 SHORT_ID=${SHORT_ID}
 PRIVATE_KEY=${PRIVATE_KEY}
+VISION_ENABLED=${VISION_ENABLED}
+VISION_PORT=${VISION_PORT}
+VISION_UUID=${VISION_UUID}
+VISION_PASSWORD=${VISION_PASSWORD}
+VISION_SHORT_ID=${VISION_SHORT_ID}
+VISION_PRIVATE_KEY=${VISION_PRIVATE_KEY}
 EOF
 
 printf '%s\n' "$CLIENT_LINK" > /root/clearxray-link.txt
 
 printf '%s' "$CLIENT_LINK" | qrencode -o /root/clearxray-qr.png
 
+if [[ "$VISION_ENABLED" == "1" ]]; then
+  printf '%s\n' "$VISION_CLIENT_LINK" > /root/clearxray-vision-link.txt
+  printf '%s' "$VISION_CLIENT_LINK" | qrencode -o /root/clearxray-vision-qr.png
+fi
+
 ok "Сохранён /root/clearxray.env"
 ok "Сохранён /root/clearxray-link.txt"
 ok "Сохранён /root/clearxray-qr.png"
+if [[ "$VISION_ENABLED" == "1" ]]; then
+  ok "Сохранён /root/clearxray-vision-link.txt"
+  ok "Сохранён /root/clearxray-vision-qr.png"
+fi
 
 step "Результат установки"
 info "Сервис: Xray REALITY"
@@ -234,9 +359,21 @@ printf "\n${GREEN}Готовая клиентская ссылка${NC}\n\n"
 cat /root/clearxray-link.txt
 printf "\n\n${GREEN}QR-код для импорта в клиент${NC}\n\n"
 printf '%s' "$CLIENT_LINK" | qrencode -t ANSIUTF8
+
+if [[ "$VISION_ENABLED" == "1" ]]; then
+  printf "\n\n${YELLOW}Экспериментальная клиентская ссылка Vision${NC}\n\n"
+  cat /root/clearxray-vision-link.txt
+  printf "\n\n${YELLOW}QR-код Vision для импорта в клиент${NC}\n\n"
+  printf '%s' "$VISION_CLIENT_LINK" | qrencode -t ANSIUTF8
+fi
+
 printf "\n\n${CYAN}Полезные команды${NC}\n"
 printf "  systemctl status xray\n"
 printf "  journalctl -u xray -n 50 --no-pager\n"
 printf "  ss -ltnp | grep 443\n"
 printf "  cat /root/clearxray-link.txt\n"
 printf "  qrencode -t ANSIUTF8 < /root/clearxray-link.txt\n"
+if [[ "$VISION_ENABLED" == "1" ]]; then
+  printf "  cat /root/clearxray-vision-link.txt\n"
+  printf "  qrencode -t ANSIUTF8 < /root/clearxray-vision-link.txt\n"
+fi
