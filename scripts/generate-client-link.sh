@@ -11,8 +11,18 @@ fi
 # shellcheck disable=SC1090
 source "$ENV_FILE"
 
+LINK="vless://${UUID}@${SERVER_IP}:443?encryption=none&type=tcp&security=reality&sni=${TARGET_HOST}&fp=chrome&pbk=${PASSWORD}&sid=${SHORT_ID}#clearxray-${TARGET_HOST}"
+
 echo "Клиентская ссылка:"
 echo
-cat <<EOF
-vless://${UUID}@${SERVER_IP}:443?encryption=none&type=tcp&security=reality&sni=${TARGET_HOST}&fp=chrome&pbk=${PASSWORD}&sid=${SHORT_ID}#clearxray-${TARGET_HOST}
-EOF
+printf '%s\n' "$LINK"
+
+echo
+echo "QR-код:"
+echo
+
+if command -v qrencode >/dev/null 2>&1; then
+  printf '%s' "$LINK" | qrencode -t ANSIUTF8
+else
+  echo "qrencode не установлен. Установите пакет: apt-get install -y qrencode"
+fi

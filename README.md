@@ -100,13 +100,14 @@ bash <(curl -fsSL https://raw.githubusercontent.com/nesfe/ClearXRay/main/install
 6. проверяет конфигурацию через встроенный тест `xray`;
 7. настраивает `ufw` с открытыми портами `22/tcp` и `443/tcp`;
 8. запускает сервис и проверяет наличие слушающего сокета;
-9. формирует готовую `vless://` ссылку для импорта в клиент.
+9. формирует готовую `vless://` ссылку и QR-код для импорта в клиент.
 
 После установки на сервере создаются:
 
 - `/usr/local/etc/xray/config.json`
 - `/root/clearxray.env`
 - `/root/clearxray-link.txt`
+- `/root/clearxray-qr.png`
 
 ## Параметры клиентского профиля
 
@@ -136,5 +137,6 @@ bash <(curl -fsSL https://raw.githubusercontent.com/nesfe/ClearXRay/main/install
 
 - [install.sh](install.sh) — точка входа для установки одной командой;
 - [scripts/install-minimal-reality.sh](scripts/install-minimal-reality.sh) — основной установщик;
-- [scripts/generate-client-link.sh](scripts/generate-client-link.sh) — генерация клиентской ссылки из сохранённых параметров;
+- [scripts/generate-client-link.sh](scripts/generate-client-link.sh) — генерация клиентской ссылки и QR-кода из сохранённых параметров;
+- [scripts/diagnose-server.sh](scripts/diagnose-server.sh) — безопасная диагностика сервера без изменения конфигурации;
 - [scripts/self-test-reality.sh](scripts/self-test-reality.sh) — локальный self-test конфигурации.

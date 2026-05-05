@@ -66,7 +66,7 @@ iptables -P OUTPUT ACCEPT 2>/dev/null || true
 ok "iptables очищены"
 
 fuser -k 443/tcp 2>/dev/null || true
-rm -f /root/clearxray.env /root/clearxray-link.txt 2>/dev/null || true
+rm -f /root/clearxray.env /root/clearxray-link.txt /root/clearxray-qr.png 2>/dev/null || true
 ok "Старые артефакты очищены"
 
 step "Проверка TLS-хоста"
@@ -80,7 +80,7 @@ fi
 
 step "Установка зависимостей"
 apt-get update -qq
-apt-get install -y -qq curl openssl ufw ca-certificates
+apt-get install -y -qq curl openssl ufw ca-certificates qrencode
 ok "Системные зависимости установлены"
 
 step "Установка Xray"
@@ -203,6 +203,8 @@ else
 fi
 
 step "Сохранение параметров"
+CLIENT_LINK="vless://${UUID}@${SERVER_IP}:443?encryption=none&type=tcp&security=reality&sni=${TARGET_HOST}&fp=chrome&pbk=${PASSWORD}&sid=${SHORT_ID}#clearxray-${TARGET_HOST}"
+
 cat > /root/clearxray.env <<EOF
 SERVER_IP=${SERVER_IP}
 TARGET_HOST=${TARGET_HOST}
@@ -212,12 +214,13 @@ SHORT_ID=${SHORT_ID}
 PRIVATE_KEY=${PRIVATE_KEY}
 EOF
 
-cat > /root/clearxray-link.txt <<EOF
-vless://${UUID}@${SERVER_IP}:443?encryption=none&type=tcp&security=reality&sni=${TARGET_HOST}&fp=chrome&pbk=${PASSWORD}&sid=${SHORT_ID}#clearxray-${TARGET_HOST}
-EOF
+printf '%s\n' "$CLIENT_LINK" > /root/clearxray-link.txt
+
+printf '%s' "$CLIENT_LINK" | qrencode -o /root/clearxray-qr.png
 
 ok "Сохранён /root/clearxray.env"
 ok "Сохранён /root/clearxray-link.txt"
+ok "Сохранён /root/clearxray-qr.png"
 
 step "Результат установки"
 info "Сервис: Xray REALITY"
@@ -225,11 +228,15 @@ info "Порт: 443/tcp"
 info "Хост маскировки: ${TARGET_HOST}"
 info "Файл окружения: /root/clearxray.env"
 info "Файл клиентской ссылки: /root/clearxray-link.txt"
+info "PNG QR-код: /root/clearxray-qr.png"
 
 printf "\n${GREEN}Готовая клиентская ссылка${NC}\n\n"
 cat /root/clearxray-link.txt
+printf "\n\n${GREEN}QR-код для импорта в клиент${NC}\n\n"
+printf '%s' "$CLIENT_LINK" | qrencode -t ANSIUTF8
 printf "\n\n${CYAN}Полезные команды${NC}\n"
 printf "  systemctl status xray\n"
 printf "  journalctl -u xray -n 50 --no-pager\n"
 printf "  ss -ltnp | grep 443\n"
 printf "  cat /root/clearxray-link.txt\n"
+printf "  qrencode -t ANSIUTF8 < /root/clearxray-link.txt\n"
