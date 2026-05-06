@@ -10,4 +10,4 @@ if [[ -f "./scripts/install-minimal-reality.sh" ]]; then
 fi
 
 printf 'Загрузка установщика ClearXRay из GitHub\n'
-bash <(curl -fL --show-error --connect-timeout 15 --max-time 180 --retry 3 --retry-delay 2 "${RAW_URL}")
+bash <(curl -fsSL "${RAW_URL}")

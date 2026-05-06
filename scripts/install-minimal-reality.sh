@@ -20,12 +20,6 @@ warn() { printf "${YELLOW}[!] %s${NC}\n" "$1"; }
 err() { printf "${RED}[ОШИБКА] %s${NC}\n" "$1"; }
 info() { printf "    %s\n" "$1"; }
 
-download_file() {
-  local url="$1"
-  local output="$2"
-  curl -fL --show-error --connect-timeout 15 --max-time 180 --retry 3 --retry-delay 2 "$url" -o "$output"
-}
-
 title
 printf "Установщик минимальной конфигурации Xray REALITY\n"
 printf "Режим установки: полная пересборка VPN-стека на сервере\n"
@@ -104,8 +98,7 @@ rm -f /root/clearxray.env \
 ok "Старые артефакты очищены"
 
 step "Проверка TLS-хоста"
-info "Проверяю ${TARGET_HOST}:443, таймаут 20 секунд"
-if timeout 20 openssl s_client -connect "${TARGET_HOST}:443" -servername "${TARGET_HOST}" -verify_hostname "${TARGET_HOST}" </dev/null >/tmp/clearxray-target.log 2>&1; then
+if echo | openssl s_client -connect "${TARGET_HOST}:443" -servername "${TARGET_HOST}" -verify_hostname "${TARGET_HOST}" >/tmp/clearxray-target.log 2>&1; then
   ok "Сертификат ${TARGET_HOST} успешно проверен"
 else
   err "Проверка сертификата ${TARGET_HOST} не прошла"
@@ -119,9 +112,7 @@ apt-get install -y -qq curl openssl ufw ca-certificates qrencode
 ok "Системные зависимости установлены"
 
 step "Установка Xray"
-download_file https://github.com/XTLS/Xray-install/raw/main/install-release.sh /tmp/clearxray-xray-install.sh
-bash /tmp/clearxray-xray-install.sh install
-rm -f /tmp/clearxray-xray-install.sh
+bash -c "$(curl -fsSL https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
 test -x /usr/local/bin/xray
 ok "$(/usr/local/bin/xray version | head -1)"
 
